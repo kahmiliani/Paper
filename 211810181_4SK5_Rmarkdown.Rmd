@@ -1,0 +1,225 @@
+---
+title: "Paper Data Mining"
+author: "4SK5_08_Annisa Kahmiliani"
+date: "12/19/2021"
+output: html_document
+---
+
+# Load Library
+```{r }
+library(readxl)
+library(fpc)
+library(dbscan)
+library(devtools)
+library(factoextra)
+library(kknn)
+library(cluster)
+library(knitr)
+library(REdaS)
+library(factoextra) 
+library(clValid)
+library(tidyverse)
+
+```
+# Input data
+```{r }
+data_paper <- read_xlsx("C:/Users/User/Downloads/aaa/7/1. DATMIN/PAPER DATMIN/Book2.xlsx")
+data_paper <- data.frame(data_paper) #jadikan data-frame
+rownames(data_paper) <- data_paper[,1] #beri nama row sesuai kabupaten/kota
+summary(data_paper) #ada variabel kabkota dan produktivitas 6 jenis tanaman pertanian (karet, kelapa, sawit, cabai, jahe, dan padi)
+```
+# Preprocessing
+
+## Drop variabel kab/kota
+```{r }
+data_pertanian <- data_paper[,-c(1)] 
+```
+## Cek missing-value
+```{r }
+sapply(data_pertanian, function(x) sum(is.na(x))) 
+```
+## Normalisasi
+```{r }
+data_scale <- scale(data_pertanian) 
+summary(data_scale)
+
+```
+## Cek asumsi variabel
+```{r }
+bart_spher(data_scale)
+KMOS(data_scale)
+```
+## Membuat PCA 
+
+```{r }
+PCA_scale <- prcomp(data_scale)
+summary(PCA_scale) #pilih jumlah PC yang sesuai, std.dev .
+  
+eigen_value <- get_eigenvalue(PCA_scale)
+eigen_value #eigen-value >= 1
+
+fviz_eig(PCA_scale) #visualisasi
+PCA_scale$rotation #loading factor
+
+PCA_scale_scores<-PCA_scale$x[,1:2]
+summary(PCA_scale_scores)
+
+```
+
+# Validasi Cluster
+```{r }
+intern <- clValid(PCA_scale_scores, 2:6, clMethods = c("hierarchical","kmeans"), validation = "internal")
+summary(intern)
+
+```
+
+# Metode Agglomerative 
+```{r }
+m <- c("single","complete","ward", "average")
+names(m) <- c("single","complete","ward", "average") 
+ac <- function(x){
+     agnes(PCA_scale_scores,method=x)$ac
+   }
+map_dbl(m,ac)
+
+```
+
+## Visualisasi Metode Agglomeratif
+
+### Metode Ward
+
+```{r }
+data.hcc_pertanian <- PCA_scale_scores %>%      
+     dist(method = "euclidean") %>% 
+     hclust(method = "ward.D2")
+
+fviz_dend(data.hcc_pertanian, k = 2, 
+                       cex = 0.6, palette = "jco", 
+                       rect = TRUE, rect_border = "jco", rect_fill = TRUE,
+                       main = "Cluster Dendogram (Ward's Method)")
+
+
+```
+
+### Metode Single
+
+```{r }
+data.hcc_pertanian1 <- PCA_scale_scores %>%      
+     dist(method = "euclidean") %>% 
+     hclust(method = "single")
+
+fviz_dend(data.hcc_pertanian1, k = 2, 
+                       cex = 0.6, palette = "jco", 
+                       rect = TRUE, rect_border = "jco", rect_fill = TRUE,
+                       main = "Cluster Dendogram (Single's Method)")
+
+
+```
+### Metode Average
+
+```{r }
+data.hcc_pertanian2 <- PCA_scale_scores %>%      
+     dist(method = "euclidean") %>% 
+     hclust(method = "average")
+
+fviz_dend(data.hcc_pertanian2, k = 2, 
+                       cex = 0.6, palette = "jco", 
+                       rect = TRUE, rect_border = "jco", rect_fill = TRUE,
+                       main = "Cluster Dendogram (Average's Method)")
+
+
+```
+
+### Metode Complete
+```{r }
+data.hcc_pertanian3 <- PCA_scale_scores %>%      
+     dist(method = "euclidean") %>% 
+     hclust(method = "complete")
+
+fviz_dend(data.hcc_pertanian3, k = 2, 
+                       cex = 0.6, palette = "jco", 
+                       rect = TRUE, rect_border = "jco", rect_fill = TRUE,
+                       main = "Cluster Dendogram (Ward's Method)")
+
+
+```
+
+## Deskripsi Statistik Klaster 
+
+### Klaster 1
+```{r }
+clust1 <- data_paper[c(9,2,16),]
+clust1
+summary(clust1)
+
+```
+
+### Klaster 2
+```{r }
+clust2 <- data_paper[-c(9,2,16),]
+clust2
+summary(clust2)
+```
+
+# Metode K-MEANS
+## Optimal Cluster
+```{r }
+set.seed(123)
+fviz_nbclust(PCA_scale_scores, kmeans, method = "silhouette")
+```
+
+## Membuat K-Means
+```{r }
+k2 <- kmeans(PCA_scale_scores, centers = 2) 
+k2
+```
+
+## Visualisasi K-MEANS
+```{r }
+fviz_cluster(k2, PCA_scale_scores, main='Cluster K-Means', ggtheme = theme_grey(), repel=TRUE) 
+```
+
+## Nilai silhouette K-MEANS
+```{r }
+sil2 <- silhouette(k2$cluster, dist(PCA_scale_scores))
+fviz_silhouette(sil2)
+```
+
+# Metode DBSCAN
+
+## Menentukan epsilon dan minimum points
+```{r }
+kNNdistplot(PCA_scale_scores,k=3)
+abline(h=1.15 ,lty=3)
+
+```
+
+## Membuat DBSCAN
+```{r }
+f<-fpc::dbscan(PCA_scale_scores, eps = 1.15, MinPts = 3)
+f
+
+dbscan_cl<-dbscan(PCA_scale_scores, eps = 1.15, minPts = 3)
+dbscan_cl
+
+table(dbscan_cl$cluster)
+```
+
+## Visualisasi DBSCAN
+```{r }
+hullplot(data_scale,dbscan_cl)
+
+pam1<-pam(dbscan_cl$cluster,2)
+dis<-dist(PCA_scale_scores)^2
+plot(silhouette(pam1,dis))
+
+```
+
+## Nilai silhouette DBSCAN
+
+```{r }
+sil <- silhouette(dbscan_cl$cluster, dist(PCA_scale_scores))
+fviz_silhouette(sil)
+```
+
+
